@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<!-- Open-Meteo API로 도시별 현재 날씨와 7일 예보를 보여주는 단일 파일 날씨 앱 -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>날씨</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --card: #ffffff; --text: #1f2933; --muted: #6b7785;
+    --accent: #800000; --line: #e3e7ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14181d; --card: #1e242b; --text: #e6e9ed; --muted: #9aa5b1; --accent: #e07a7a; --line: #2c343d; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.4rem; margin: 0 0 16px; color: var(--accent); }
+  form { display: flex; gap: 8px; margin-bottom: 20px; }
+  input { flex: 1; padding: 10px 12px; font-size: 1rem; border: 1px solid var(--line);
+          border-radius: 8px; background: var(--card); color: var(--text); }
+  button { padding: 10px 14px; font-size: 0.95rem; border: none; border-radius: 8px;
+           background: var(--accent); color: #fff; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  .card { background: var(--card); border-radius: 12px; padding: 20px; margin-bottom: 16px;
+          box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .place { font-size: 1.1rem; font-weight: 700; }
+  .sub { color: var(--muted); font-size: 0.85rem; }
+  .now { display: flex; align-items: center; gap: 16px; margin: 12px 0; }
+  .icon { font-size: 3rem; line-height: 1; }
+  .temp { font-size: 3rem; font-weight: 700; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .grid div { background: var(--bg); border-radius: 8px; padding: 10px; text-align: center; }
+  .grid b { display: block; font-size: 1.05rem; }
+  .day { display: grid; grid-template-columns: 70px 36px 1fr auto; align-items: center;
+         gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .day:last-child { border-bottom: none; }
+  .day .lo { color: var(--muted); }
+  .msg { color: var(--muted); text-align: center; padding: 20px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>날씨</h1>
+  <form id="f">
+    <input id="q" placeholder="도시 이름 (예: 서울, 부산, Tokyo)" autocomplete="off">
+    <button type="submit">검색</button>
+    <button type="button" class="ghost" id="loc" title="현재 위치">내 위치</button>
+  </form>
+  <div id="out"><p class="msg">불러오는 중…</p></div>
+</main>
+
+<script>
+const WMO = {
+  0:["맑음","☀️"],1:["대체로 맑음","🌤️"],2:["구름 조금","⛅"],3:["흐림","☁️"],
+  45:["안개","🌫️"],48:["착빙 안개","🌫️"],
+  51:["약한 이슬비","🌦️"],53:["이슬비","🌦️"],55:["강한 이슬비","🌧️"],
+  56:["어는 이슬비","🌧️"],57:["강한 어는 이슬비","🌧️"],
+  61:["약한 비","🌦️"],63:["비","🌧️"],65:["강한 비","🌧️"],
+  66:["어는 비","🌧️"],67:["강한 어는 비","🌧️"],
+  71:["약한 눈","🌨️"],73:["눈","🌨️"],75:["강한 눈","❄️"],77:["싸락눈","🌨️"],
+  80:["약한 소나기","🌦️"],81:["소나기","🌧️"],82:["강한 소나기","⛈️"],
+  85:["약한 눈 소나기","🌨️"],86:["강한 눈 소나기","❄️"],
+  95:["뇌우","⛈️"],96:["우박 동반 뇌우","⛈️"],99:["강한 우박 뇌우","⛈️"]
+};
+const wmo = c => WMO[c] || ["알 수 없음","❔"];
+const out = document.getElementById("out");
+const DAYS = ["일","월","화","수","목","금","토"];
+
+function show(html) { out.innerHTML = html; }
+
+// Open-Meteo는 한글 도시명 검색이 부정확하므로 주요 도시는 영문명으로 바꿔 국내(KR)로 한정해 검색한다
+const KO = {
+  "서울":"Seoul","부산":"Busan","대구":"Daegu","인천":"Incheon","광주":"Gwangju","대전":"Daejeon",
+  "울산":"Ulsan","세종":"Sejong","수원":"Suwon","춘천":"Chuncheon","강릉":"Gangneung","청주":"Cheongju",
+  "전주":"Jeonju","포항":"Pohang","창원":"Changwon","제주":"Jeju","서귀포":"Seogwipo","여수":"Yeosu",
+  "목포":"Mokpo","안동":"Andong","원주":"Wonju","천안":"Cheonan"
+};
+
+async function geocode(name) {
+  const key = name.replace(/(특별시|광역시|특별자치시|특별자치도|시)$/, "");
+  const en = KO[key];
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(en || name)}&count=1&language=ko&format=json`
+    + (en ? "&countryCode=KR" : "");
+  const r = await fetch(url);
+  const j = await r.json();
+  if (!j.results || !j.results.length) throw new Error(`'${name}'을(를) 찾지 못했습니다.`);
+  const p = j.results[0];
+  return { lat: p.latitude, lon: p.longitude,
+           label: [p.name, p.admin1, p.country].filter(Boolean).join(", ") };
+}
+
+async function load(lat, lon, label) {
+  show('<p class="msg">불러오는 중…</p>');
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+    + `&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,precipitation`
+    + `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max`
+    + `&timezone=auto&wind_speed_unit=ms`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("날씨 정보를 가져오지 못했습니다.");
+  const d = await r.json();
+  const c = d.current;
+  const [desc, icon] = wmo(c.weather_code);
+  const days = d.daily.time.map((t, i) => {
+    const dt = new Date(t + "T00:00");
+    const name = i === 0 ? "오늘" : `${dt.getMonth()+1}/${dt.getDate()} ${DAYS[dt.getDay()]}`;
+    const [dd, di] = wmo(d.daily.weather_code[i]);
+    const pop = d.daily.precipitation_probability_max[i];
+    return `<div class="day"><span>${name}</span><span title="${dd}">${di}</span>
+      <span class="sub">${dd}${pop != null ? ` · 강수 ${pop}%` : ""}</span>
+      <span><b>${Math.round(d.daily.temperature_2m_max[i])}°</b> <span class="lo">${Math.round(d.daily.temperature_2m_min[i])}°</span></span></div>`;
+  }).join("");
+  show(`
+    <div class="card">
+      <div class="place">${label}</div>
+      <div class="sub">${c.time.replace("T", " ")} 기준</div>
+      <div class="now"><span class="icon">${icon}</span>
+        <span class="temp">${Math.round(c.temperature_2m)}°</span>
+        <span>${desc}<br><span class="sub">체감 ${Math.round(c.apparent_temperature)}°</span></span></div>
+      <div class="grid">
+        <div><span class="sub">습도</span><b>${c.relative_humidity_2m}%</b></div>
+        <div><span class="sub">바람</span><b>${c.wind_speed_10m} m/s</b></div>
+        <div><span class="sub">강수량</span><b>${c.precipitation} mm</b></div>
+      </div>
+    </div>
+    <div class="card">${days}</div>
+    <p class="sub" style="text-align:center">데이터 출처: Open-Meteo.com</p>`);
+}
+
+async function byName(name) {
+  try { const p = await geocode(name); await load(p.lat, p.lon, p.label); }
+  catch (e) { show(`<p class="msg">${e.message}</p>`); }
+}
+
+document.getElementById("f").addEventListener("submit", e => {
+  e.preventDefault();
+  const q = document.getElementById("q").value.trim();
+  if (q) byName(q);
+});
+
+document.getElementById("loc").addEventListener("click", () => {
+  if (!navigator.geolocation) return show('<p class="msg">이 브라우저는 위치 기능을 지원하지 않습니다.</p>');
+  show('<p class="msg">위치 확인 중…</p>');
+  navigator.geolocation.getCurrentPosition(
+    p => load(p.coords.latitude, p.coords.longitude, "내 위치").catch(e => show(`<p class="msg">${e.message}</p>`)),
+    () => show('<p class="msg">위치 권한이 거부되었거나 위치를 확인할 수 없습니다.</p>')
+  );
+});
+
+byName("서울");
+</script>
+</body>
+</html>
