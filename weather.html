@@ -55,7 +55,6 @@
     <button type="button" class="ghost" id="loc" title="현재 위치">내 위치</button>
   </form>
   <div id="out"><p class="msg">불러오는 중…</p></div>
-  <div id="kospi"></div>
 </main>
 
 <script>
@@ -131,6 +130,7 @@ async function load(lat, lon, label) {
         <div><span class="sub">강수량</span><b>${c.precipitation} mm</b></div>
       </div>
     </div>
+    <div id="kospi">${kospiHtml}</div>
     <div class="card">${days}</div>
     <p class="sub" style="text-align:center">데이터 출처: Open-Meteo.com</p>`);
 }
@@ -155,9 +155,17 @@ document.getElementById("loc").addEventListener("click", () => {
   );
 });
 
-// 코스피: GitHub Actions가 갱신하는 kospi.json을 읽어 전일·현재 지수와 차이를 보여준다
-async function loadKospi() {
+// 코스피: GitHub Actions가 갱신하는 kospi.json을 읽어 전일·현재 지수와 전일비를 보여준다.
+// 날씨 화면은 검색할 때마다 다시 그려지므로, 카드 HTML을 kospiHtml에 보관해 두고
+// load()가 현재 날씨와 주간 날씨 사이(#kospi)에 매번 넣는다.
+let kospiHtml = "";
+function setKospi(html) {
+  kospiHtml = html;
   const box = document.getElementById("kospi");
+  if (box) box.innerHTML = html;
+}
+
+async function loadKospi() {
   try {
     const r = await fetch(`kospi.json?t=${Date.now()}`);
     if (!r.ok) throw new Error();
@@ -166,19 +174,19 @@ async function loadKospi() {
     const md = d => { const [, m, dd] = d.split("-"); return `${+m}/${+dd}`; };
     const cls = k.change > 0 ? "up" : k.change < 0 ? "down" : "";
     const sign = k.change > 0 ? "▲ " : k.change < 0 ? "▼ " : "";
-    box.innerHTML = `
+    setKospi(`
       <div class="card">
         <div class="place">코스피 (KOSPI)</div>
         <div class="kospi">
           <div><span class="sub">전일 (${md(k.previous.date)})</span><b>${fmt(k.previous.value)}</b></div>
           <div><span class="sub">현재 (${md(k.current.date)})</span><b class="${cls}">${fmt(k.current.value)}</b></div>
-          <div><span class="sub">차이</span><b class="${cls}">${sign}${fmt(Math.abs(k.change))}</b>
+          <div><span class="sub">전일비</span><b class="${cls}">${sign}${fmt(Math.abs(k.change))}</b>
             <span class="sub ${cls}">${k.changePct > 0 ? "+" : ""}${k.changePct.toFixed(2)}%</span></div>
         </div>
         <p class="sub" style="margin:10px 0 0">${k.asOf} 기준 · 출처: ${k.source} · 실시간이 아니며 지연될 수 있음</p>
-      </div>`;
+      </div>`);
   } catch {
-    box.innerHTML = '<p class="msg">코스피 정보를 불러오지 못했습니다.</p>';
+    setKospi('<p class="msg">코스피 정보를 불러오지 못했습니다.</p>');
   }
 }
 
