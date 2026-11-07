@@ -39,6 +39,11 @@
   .day:last-child { border-bottom: none; }
   .day .lo { color: var(--muted); }
   .msg { color: var(--muted); text-align: center; padding: 20px; }
+  .kospi { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .kospi div { background: var(--bg); border-radius: 8px; padding: 10px; text-align: center; }
+  .kospi b { display: block; font-size: 1.1rem; }
+  .up { color: #d63031; } .down { color: #1e6fd9; }
+  @media (prefers-color-scheme: dark) { .up { color: #ff6b6b; } .down { color: #5ea0ff; } }
 </style>
 </head>
 <body>
@@ -50,6 +55,7 @@
     <button type="button" class="ghost" id="loc" title="현재 위치">내 위치</button>
   </form>
   <div id="out"><p class="msg">불러오는 중…</p></div>
+  <div id="kospi"></div>
 </main>
 
 <script>
@@ -149,7 +155,35 @@ document.getElementById("loc").addEventListener("click", () => {
   );
 });
 
+// 코스피: GitHub Actions가 갱신하는 kospi.json을 읽어 전일·현재 지수와 차이를 보여준다
+async function loadKospi() {
+  const box = document.getElementById("kospi");
+  try {
+    const r = await fetch(`kospi.json?t=${Date.now()}`);
+    if (!r.ok) throw new Error();
+    const k = await r.json();
+    const fmt = v => v.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const md = d => { const [, m, dd] = d.split("-"); return `${+m}/${+dd}`; };
+    const cls = k.change > 0 ? "up" : k.change < 0 ? "down" : "";
+    const sign = k.change > 0 ? "▲ " : k.change < 0 ? "▼ " : "";
+    box.innerHTML = `
+      <div class="card">
+        <div class="place">코스피 (KOSPI)</div>
+        <div class="kospi">
+          <div><span class="sub">전일 (${md(k.previous.date)})</span><b>${fmt(k.previous.value)}</b></div>
+          <div><span class="sub">현재 (${md(k.current.date)})</span><b class="${cls}">${fmt(k.current.value)}</b></div>
+          <div><span class="sub">차이</span><b class="${cls}">${sign}${fmt(Math.abs(k.change))}</b>
+            <span class="sub ${cls}">${k.changePct > 0 ? "+" : ""}${k.changePct.toFixed(2)}%</span></div>
+        </div>
+        <p class="sub" style="margin:10px 0 0">${k.asOf} 기준 · 출처: ${k.source} · 실시간이 아니며 지연될 수 있음</p>
+      </div>`;
+  } catch {
+    box.innerHTML = '<p class="msg">코스피 정보를 불러오지 못했습니다.</p>';
+  }
+}
+
 byName("서울");
+loadKospi();
 </script>
 </body>
 </html>
