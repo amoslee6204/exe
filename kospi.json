@@ -2,14 +2,14 @@
   "name": "KOSPI",
   "current": {
     "date": "2026-11-10",
-    "value": 5232.14
+    "value": 5204.26
   },
   "previous": {
     "date": "2026-11-09",
     "value": 5018.85
   },
-  "change": 213.29,
-  "changePct": 4.25,
-  "asOf": "2026-11-10 12:22",
+  "change": 185.41,
+  "changePct": 3.69,
+  "asOf": "2026-11-10 13:23",
   "source": "Yahoo Finance"
 }
